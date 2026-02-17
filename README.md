@@ -1,3 +1,6 @@
+
+[text](../Downloads/pdf-processor/docker-compose.yml) [text](../Downloads/pdf-processor/nginx.conf) [text](../Downloads/pdf-processor/README.md) [text](../Downloads/pdf-processor/html) [text](../Downloads/pdf-processor/init) [text](../Downloads/pdf-processor/lambda)
+
 # PDF Text Processor — LocalStack
 
 A complete serverless PDF processing pipeline running entirely on LocalStack.
