@@ -19,6 +19,23 @@ echo "-> Creating S3 buckets..."
 $AWS s3 mb s3://$UPLOAD_BUCKET 2>/dev/null || true
 $AWS s3 mb s3://$OUTPUT_BUCKET 2>/dev/null || true
 
+# ── 1b. Configure S3 CORS ──
+echo "-> Configuring S3 bucket CORS..."
+CORS_CONFIG='{
+    "CORSRules": [
+        {
+            "AllowedOrigins": ["*"],
+            "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+            "AllowedHeaders": ["*"],
+            "ExposeHeaders": ["ETag", "x-amz-request-id", "Content-Length", "Content-Type"],
+            "MaxAgeSeconds": 3600
+        }
+    ]
+}'
+$AWS s3api put-bucket-cors --bucket $UPLOAD_BUCKET --cors-configuration "$CORS_CONFIG"
+$AWS s3api put-bucket-cors --bucket $OUTPUT_BUCKET --cors-configuration "$CORS_CONFIG"
+echo "  CORS configured on both buckets"
+
 # ── 2. Create SQS Queues ──
 echo "-> Creating SQS queues..."
 UPLOAD_QUEUE_URL=$($AWS sqs create-queue --queue-name $UPLOAD_QUEUE --query 'QueueUrl' --output text)
