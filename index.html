@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Processor — LocalStack</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c0c0f;
+    --surface: #16161c;
+    --surface-raised: #1e1e26;
+    --border: #2a2a35;
+    --border-hover: #3d3d4d;
+    --text: #e8e6f0;
+    --text-dim: #8a8898;
+    --accent: #6c5ce7;
+    --accent-glow: rgba(108, 92, 231, 0.25);
+    --success: #00d2a0;
+    --success-bg: rgba(0, 210, 160, 0.08);
+    --warn: #f0a030;
+    --danger: #ff5b5b;
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    top: -200px; right: -200px;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(108, 92, 231, 0.07) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+    position: relative; z-index: 1;
+  }
+
+  header { text-align: center; margin-bottom: 48px; }
+
+  header h1 {
+    font-size: 2rem; font-weight: 700;
+    letter-spacing: -0.03em; margin-bottom: 6px;
+    background: linear-gradient(135deg, var(--text), var(--accent));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  header p { color: var(--text-dim); font-size: 0.95rem; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 20px;
+    font-size: 0.75rem; color: var(--text-dim); margin-top: 12px;
+  }
+
+  .badge .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--success); animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+  }
+
+  @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+  }
+
+  .card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 24px; border-bottom: 1px solid var(--border);
+  }
+
+  .card-header h2 {
+    font-size: 1rem; font-weight: 600;
+    letter-spacing: -0.01em;
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .card-header h2 .icon {
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent-glow); border-radius: var(--radius-sm);
+    font-size: 1rem;
+  }
+
+  .card-body { padding: 24px; }
+
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius);
+    padding: 48px 24px; text-align: center; cursor: pointer;
+    transition: all 0.25s ease; background: transparent;
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent); background: var(--accent-glow);
+  }
+
+  .drop-zone .upload-icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.6; }
+  .drop-zone p { color: var(--text-dim); font-size: 0.9rem; line-height: 1.6; }
+
+  .drop-zone .browse-link {
+    color: var(--accent); text-decoration: underline;
+    cursor: pointer; font-weight: 500;
+  }
+
+  .drop-zone input[type="file"] { display: none; }
+
+  .upload-list { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+
+  .upload-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; background: var(--surface-raised);
+    border-radius: var(--radius-sm); border: 1px solid var(--border);
+    animation: slideIn 0.3s ease;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .upload-item .file-icon { font-size: 1.2rem; }
+  .upload-item .file-info { flex: 1; min-width: 0; }
+  .upload-item .file-name {
+    font-size: 0.85rem; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .upload-item .file-size { font-size: 0.75rem; color: var(--text-dim); margin-top: 2px; }
+
+  .upload-item .status-badge {
+    font-size: 0.7rem; font-weight: 600; padding: 3px 10px;
+    border-radius: 20px; text-transform: uppercase;
+    letter-spacing: 0.05em; white-space: nowrap;
+  }
+
+  .status-uploading { background: rgba(108,92,231,0.15); color: var(--accent); }
+  .status-processing { background: rgba(240,160,48,0.15); color: var(--warn); }
+  .status-done { background: var(--success-bg); color: var(--success); }
+  .status-error { background: rgba(255,91,91,0.15); color: var(--danger); }
+
+  .file-list {
+    display: flex; flex-direction: column; gap: 6px;
+    max-height: 500px; overflow-y: auto;
+  }
+
+  .file-list::-webkit-scrollbar { width: 4px; }
+  .file-list::-webkit-scrollbar-track { background: transparent; }
+  .file-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .file-entry {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; border-radius: var(--radius-sm);
+    cursor: pointer; transition: all 0.15s ease; border: 1px solid transparent;
+  }
+
+  .file-entry:hover { background: var(--surface-raised); border-color: var(--border); }
+
+  .file-entry.active { background: var(--accent-glow); border-color: var(--accent); }
+
+  .file-entry .file-icon { opacity: 0.5; }
+  .file-entry .name {
+    flex: 1; font-size: 0.85rem; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .file-entry .meta {
+    font-size: 0.7rem; color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .empty-state {
+    text-align: center; padding: 48px 24px; color: var(--text-dim);
+  }
+  .empty-state .empty-icon { font-size: 2rem; margin-bottom: 12px; opacity: 0.4; }
+  .empty-state p { font-size: 0.9rem; }
+
+  .viewer-section { margin-top: 24px; }
+
+  .viewer-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+  }
+
+  .viewer-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    background: var(--surface-raised);
+  }
+
+  .viewer-header .title {
+    font-size: 0.9rem; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .viewer-header .close-btn {
+    background: none; border: 1px solid var(--border); color: var(--text-dim);
+    width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+  }
+
+  .viewer-header .close-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  .viewer-content {
+    padding: 24px; font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem; line-height: 1.7; color: var(--text-dim);
+    white-space: pre-wrap; word-break: break-word;
+    max-height: 500px; overflow-y: auto;
+  }
+
+  .btn-refresh {
+    background: none; border: 1px solid var(--border); color: var(--text-dim);
+    padding: 6px 14px; border-radius: 8px; font-size: 0.75rem;
+    font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.15s;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .btn-refresh:hover { border-color: var(--accent); color: var(--text); }
+  .btn-refresh.spinning .refresh-icon { animation: spin 0.6s linear; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+  .sqs-log { margin-top: 24px; }
+
+  .log-entries {
+    display: flex; flex-direction: column; gap: 4px;
+    max-height: 200px; overflow-y: auto; padding: 16px;
+    background: var(--surface-raised); border-radius: var(--radius-sm);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem; line-height: 1.8; color: var(--text-dim);
+  }
+
+  .log-entry { display: flex; gap: 8px; align-items: flex-start; }
+  .log-entry .timestamp { color: var(--text-dim); opacity: 0.5; flex-shrink: 0; }
+  .log-entry .arrow { color: var(--accent); flex-shrink: 0; }
+  .log-entry .msg { word-break: break-all; }
+  .log-done { color: var(--success) !important; }
+  .log-upload { color: var(--accent) !important; }
+  .log-error { color: var(--danger) !important; }
+
+  .arch-section { margin-top: 24px; }
+
+  .arch-flow {
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px; flex-wrap: wrap; padding: 20px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); font-size: 0.75rem; color: var(--text-dim);
+  }
+
+  .arch-node {
+    padding: 8px 14px; border-radius: 6px;
+    background: var(--surface-raised); border: 1px solid var(--border);
+    font-weight: 500; white-space: nowrap;
+  }
+
+  .arch-arrow { color: var(--accent); font-weight: bold; }
+
+  .poll-indicator {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.7rem; color: var(--text-dim); opacity: 0.6;
+  }
+
+  .poll-indicator .dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--success); animation: pulse 2s infinite;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>PDF Text Processor</h1>
+    <p>Upload PDFs &rarr; Extract text via Lambda &rarr; Browse results</p>
+    <div class="badge"><span class="dot"></span><span>LocalStack</span></div>
+  </header>
+
+  <div class="arch-section">
+    <div class="arch-flow">
+      <span class="arch-node">&#128196; PDF Upload</span>
+      <span class="arch-arrow">&rarr;</span>
+      <span class="arch-node">&#129717; S3 Bucket</span>
+      <span class="arch-arrow">&rarr;</span>
+      <span class="arch-node">&#128232; SQS Queue</span>
+      <span class="arch-arrow">&rarr;</span>
+      <span class="arch-node">&#9889; Lambda</span>
+      <span class="arch-arrow">&rarr;</span>
+      <span class="arch-node">&#128221; Text in S3</span>
+      <span class="arch-arrow">&rarr;</span>
+      <span class="arch-node">&#9989; SQS Result</span>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top: 24px;">
+    <!-- Upload Panel -->
+    <div>
+      <div class="card">
+        <div class="card-header">
+          <h2><span class="icon">&#128228;</span> Upload PDF</h2>
+        </div>
+        <div class="card-body">
+          <div class="drop-zone" id="dropZone">
+            <div class="upload-icon">&#128196;</div>
+            <p>Drag &amp; drop your PDF here<br>or <span class="browse-link" id="browseLink">browse files</span></p>
+            <input type="file" id="fileInput" accept=".pdf" multiple>
+          </div>
+          <div class="upload-list" id="uploadList"></div>
+        </div>
+      </div>
+
+      <div class="sqs-log">
+        <div class="card">
+          <div class="card-header">
+            <h2><span class="icon">&#128232;</span> Event Log</h2>
+            <div class="poll-indicator"><span class="dot"></span><span>polling</span></div>
+          </div>
+          <div class="log-entries" id="logEntries">
+            <div class="log-entry">
+              <span class="timestamp">--:--:--</span>
+              <span class="arrow">&rsaquo;</span>
+              <span class="msg">Waiting for events...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results Panel -->
+    <div>
+      <div class="card">
+        <div class="card-header">
+          <h2><span class="icon">&#128221;</span> Processed Files</h2>
+          <button class="btn-refresh" id="refreshBtn" onclick="refreshFileList()">
+            <span class="refresh-icon">&orarr;</span> Refresh
+          </button>
+        </div>
+        <div class="card-body">
+          <div class="file-list" id="fileList">
+            <div class="empty-state">
+              <div class="empty-icon">&#128237;</div>
+              <p>No processed files yet.<br>Upload a PDF to get started.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="viewer-section" id="viewerSection" style="display: none;">
+        <div class="viewer-card">
+          <div class="viewer-header">
+            <span class="title">&#128214; <span id="viewerTitle">file.txt</span></span>
+            <button class="close-btn" onclick="closeViewer()">&times;</button>
+          </div>
+          <div class="viewer-content" id="viewerContent"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── All API calls go through nginx proxy (same origin = no CORS) ──
+const API = {
+  upload: (key) => `/s3-upload/${key}`,
+  outputList: () => `/s3-output/?list-type=2&prefix=processed/`,
+  outputFile: (key) => `/s3-output/${key}`,
+  outputHead: (key) => `/s3-output/${key}`,
+  sqsReceive: () => `/sqs/processing-results?Action=ReceiveMessage&MaxNumberOfMessages=10&WaitTimeSeconds=0&VisibilityTimeout=30`,
+  sqsDelete: (receipt) => `/sqs/processing-results?Action=DeleteMessage&ReceiptHandle=${encodeURIComponent(receipt)}`,
+};
+
+let pollInterval = null;
+let refreshInterval = null;
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', () => {
+  setupDropZone();
+  refreshFileList();
+  startPolling();
+  refreshInterval = setInterval(refreshFileList, 5000);
+});
+
+// ── Drag & Drop ──
+function setupDropZone() {
+  const zone = document.getElementById('dropZone');
+  const input = document.getElementById('fileInput');
+  const browseLink = document.getElementById('browseLink');
+
+  browseLink.addEventListener('click', (e) => { e.stopPropagation(); input.click(); });
+  zone.addEventListener('click', () => input.click());
+
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    [...e.dataTransfer.files].filter(f => f.type === 'application/pdf').forEach(uploadFile);
+  });
+
+  input.addEventListener('change', (e) => {
+    [...e.target.files].forEach(uploadFile);
+    e.target.value = '';
+  });
+}
+
+// ── Upload File to S3 via nginx proxy ──
+async function uploadFile(file) {
+  const id = Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+  const key = `uploads/${file.name}`;
+
+  addUploadItem(id, file.name, file.size, 'uploading');
+  addLog(`Uploading ${file.name} (${formatSize(file.size)})...`, 'upload');
+
+  try {
+    const response = await fetch(API.upload(key), {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': 'application/pdf' },
+    });
+
+    if (response.ok) {
+      updateUploadStatus(id, 'processing');
+      addLog(`Uploaded ${file.name} -> S3 notification sent to SQS`, 'upload');
+      pollForCompletion(id, file.name);
+    } else {
+      updateUploadStatus(id, 'error');
+      addLog(`Upload failed: ${response.status} ${response.statusText}`, 'error');
+    }
+  } catch (err) {
+    updateUploadStatus(id, 'error');
+    addLog(`Upload error: ${err.message}`, 'error');
+  }
+}
+
+async function pollForCompletion(uploadId, fileName) {
+  const baseName = fileName.replace(/\.pdf$/i, '');
+  let attempts = 0;
+  const maxAttempts = 60;
+
+  const check = async () => {
+    attempts++;
+    try {
+      const res = await fetch(API.outputHead(`processed/${baseName}.txt`), { method: 'HEAD' });
+      if (res.ok) {
+        updateUploadStatus(uploadId, 'done');
+        addLog(`${fileName} processed -> text file ready`, 'done');
+        refreshFileList();
+        return;
+      }
+    } catch (e) { /* not ready yet */ }
+
+    if (attempts < maxAttempts) {
+      setTimeout(check, 2000);
+    } else {
+      updateUploadStatus(uploadId, 'error');
+      addLog(`Timeout waiting for ${fileName}`, 'error');
+    }
+  };
+
+  setTimeout(check, 3000);
+}
+
+// ── Upload List UI ──
+function addUploadItem(id, name, size, status) {
+  const list = document.getElementById('uploadList');
+  const item = document.createElement('div');
+  item.className = 'upload-item';
+  item.id = `upload-${id}`;
+  item.innerHTML = `
+    <span class="file-icon">&#128196;</span>
+    <div class="file-info">
+      <div class="file-name">${escapeHtml(name)}</div>
+      <div class="file-size">${formatSize(size)}</div>
+    </div>
+    <span class="status-badge status-${status}" id="status-${id}">${statusLabel(status)}</span>
+  `;
+  list.prepend(item);
+}
+
+function updateUploadStatus(id, status) {
+  const badge = document.getElementById(`status-${id}`);
+  if (badge) {
+    badge.className = `status-badge status-${status}`;
+    badge.textContent = statusLabel(status);
+  }
+}
+
+function statusLabel(s) {
+  return { uploading: 'Uploading', processing: 'Processing', done: 'Done', error: 'Error' }[s] || s;
+}
+
+// ── File List ──
+async function refreshFileList() {
+  const btn = document.getElementById('refreshBtn');
+  btn.classList.add('spinning');
+
+  try {
+    const res = await fetch(API.outputList());
+    const text = await res.text();
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(text, 'text/xml');
+    const contents = xml.querySelectorAll('Contents');
+    const list = document.getElementById('fileList');
+
+    if (contents.length === 0) {
+      list.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">&#128237;</div>
+          <p>No processed files yet.<br>Upload a PDF to get started.</p>
+        </div>`;
+    } else {
+      list.innerHTML = '';
+      contents.forEach(item => {
+        const key = item.querySelector('Key').textContent;
+        const size = parseInt(item.querySelector('Size').textContent);
+        const name = key.split('/').pop();
+        if (!name) return;
+
+        const entry = document.createElement('div');
+        entry.className = 'file-entry';
+        entry.setAttribute('data-key', key);
+        entry.onclick = function() { viewFile(key, name, this); };
+        entry.innerHTML = `
+          <span class="file-icon">&#128221;</span>
+          <span class="name">${escapeHtml(name)}</span>
+          <span class="meta">${formatSize(size)}</span>
+        `;
+        list.appendChild(entry);
+      });
+    }
+  } catch (err) {
+    console.error('Error listing files:', err);
+  }
+
+  setTimeout(() => btn.classList.remove('spinning'), 600);
+}
+
+// ── View File ──
+async function viewFile(key, name, element) {
+  document.querySelectorAll('.file-entry').forEach(e => e.classList.remove('active'));
+  if (element) element.classList.add('active');
+
+  const viewer = document.getElementById('viewerSection');
+  const title = document.getElementById('viewerTitle');
+  const content = document.getElementById('viewerContent');
+
+  title.textContent = name;
+  content.textContent = 'Loading...';
+  viewer.style.display = 'block';
+
+  try {
+    const res = await fetch(API.outputFile(key));
+    content.textContent = await res.text();
+  } catch (err) {
+    content.textContent = `Error loading file: ${err.message}`;
+  }
+}
+
+function closeViewer() {
+  document.getElementById('viewerSection').style.display = 'none';
+  document.querySelectorAll('.file-entry').forEach(e => e.classList.remove('active'));
+}
+
+// ── SQS Polling ──
+function startPolling() {
+  pollInterval = setInterval(pollResultQueue, 4000);
+}
+
+async function pollResultQueue() {
+  try {
+    const res = await fetch(API.sqsReceive());
+    const text = await res.text();
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(text, 'text/xml');
+    const messages = xml.querySelectorAll('Message');
+
+    messages.forEach(msg => {
+      const body = msg.querySelector('Body').textContent;
+      const receipt = msg.querySelector('ReceiptHandle').textContent;
+
+      try {
+        const data = JSON.parse(body);
+        if (data.status === 'completed') {
+          addLog(
+            `Finished: ${data.source_key?.split('/').pop()} -> ${data.output_key?.split('/').pop()} (${data.pages} pages, ${formatSize(data.text_length)} text)`,
+            'done'
+          );
+          refreshFileList();
+        }
+      } catch (e) {
+        addLog(`SQS: ${body.substring(0, 100)}`, '');
+      }
+
+      fetch(API.sqsDelete(receipt));
+    });
+  } catch (e) { /* queue may not exist yet */ }
+}
+
+// ── Event Log ──
+function addLog(message, type) {
+  const container = document.getElementById('logEntries');
+  const ts = new Date().toTimeString().split(' ')[0];
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `
+    <span class="timestamp">${ts}</span>
+    <span class="arrow">&rsaquo;</span>
+    <span class="msg ${type ? 'log-' + type : ''}">${escapeHtml(message)}</span>
+  `;
+  container.appendChild(entry);
+  container.scrollTop = container.scrollHeight;
+  while (container.children.length > 50) container.removeChild(container.firstChild);
+}
+
+// ── Helpers ──
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+</script>
+</body>
+</html>
